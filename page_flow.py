@@ -53,6 +53,7 @@ from typing import Callable, Optional
 from product_parser import (STATE_CHALLENGE, STATE_CONTENT,
                             STATE_EMPTY_SUCCESS, STATE_ERROR,
                             STATE_PARSE_ERROR, STATE_UNKNOWN,
+                            STATE_WAF_CHALLENGE,
                             STATE_USER_UNAVAILABLE, detect_page_state)
 
 # ---------------------------------------------------------------------------
@@ -176,6 +177,20 @@ STATE_POLICY = {
     # is tiktok-shop-scraper's problem. Carried here as readiness.
     STATE_CHALLENGE: {"retry": True, "solve": True, "blocked": True,
                       "parse": False},
+    # TikTok's WAF interstitial: HTTP 200, 1,462 bytes, "Please wait...",
+    # carrying a JavaScript challenge.
+    #
+    # `blocked` True is what makes `--transport auto` do the right thing:
+    # the engines switch to a browser for any state that counts as
+    # blocked, and a browser is the measured remedy — 3 of 3 cleared on
+    # the very exits that refused a plain HTTP client.
+    #
+    # `solve` False, and that is measured rather than defaulted: the page
+    # carries no widget, no sitekey and no captcha of any kind, so paying
+    # a solver would buy a request the API cannot fulfil (CLAUDE.md §19:
+    # detected != paying).
+    STATE_WAF_CHALLENGE: {"retry": True, "solve": False, "blocked": True,
+                          "parse": False},
     # An HTTP error that is not a recognised refusal — a 500, a gateway's
     # own page, a truncated body. A wait, not a spend.
     STATE_ERROR: {"retry": True, "solve": False, "blocked": False,

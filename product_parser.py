@@ -44,6 +44,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from tiktok_payload import (
     BOT_CHALLENGE_MARKERS,
+    WAF_CHALLENGE_MARKERS,
     PayloadError,
     is_empty_success,
     USER_STATUS_OK,
@@ -52,6 +53,7 @@ from tiktok_payload import (
     counts,
     decode_page,
     rehydration_scope,
+    waf_markers_present,
     user_status,
 )
 
@@ -434,6 +436,12 @@ STATE_USER_UNAVAILABLE = "user_unavailable"
 # "empty" would make a refused run report an account with no data.
 STATE_EMPTY_SUCCESS = "empty_success"
 STATE_CHALLENGE = "challenge"
+# TikTok's WAF interstitial — HTTP 200, 1,462 bytes, "Please wait...".
+# A JavaScript challenge rather than a captcha: a browser clears it
+# (3 of 3 on the very exits that refused a plain HTTP client), and
+# there is no widget for a solver to solve. Its own state because the
+# REMEDY is its own: switch transport, or take a different exit.
+STATE_WAF_CHALLENGE = "waf_challenge"
 STATE_ERROR = "error"
 # A page the site plainly served, with the scope this repo reads on it,
 # that parsed to zero rows. OUR bug, and it gets its own name so it cannot
@@ -477,6 +485,12 @@ def detect_page_state(html: Any, status: Optional[int] = None,
     #    measured zero on every served capture in this repo.
     if challenge_markers_present(text):
         return STATE_CHALLENGE
+
+    # Checked before any attempt to read a payload, because the WAF page
+    # HAS no payload and would otherwise fall through to `parse_error` —
+    # which points a reader at this parser instead of at their exit.
+    if waf_markers_present(text):
+        return STATE_WAF_CHALLENGE
 
     # 4. The payload's own verdict — the strongest signal available,
     #    because it is TikTok stating the outcome rather than us guessing
