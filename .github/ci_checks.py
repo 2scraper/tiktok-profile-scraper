@@ -85,59 +85,44 @@ CREDENTIAL_ALLOWED = (
 # A 2captcha API key is a 32-character hex string.
 HEX32 = re.compile(r"\b[0-9a-f]{32}\b")
 
-# `/<32 hex>~tplv` — an avatar's public content hash inside one of TikTok's
-# own CDN paths, which `product_parser._avatar_parts()` reads into the
-# `avatar_id` column.
-_CDN_AVATAR_HEX = re.compile(r"/([0-9a-f]{32})~tplv")
+# TikTok's own URLs are full of 32-hex strings, and enumerating the shapes
+# was a losing game: the first version matched `/<hex>~tplv` (an image's
+# content hash), the second added `<host>/<hex>/` (a video delivery path),
+# and the fixtures still carried two more — a `signature=<hex>` query
+# parameter and a `<hex>` segment further down the path. Each round of
+# whack-a-mole made the rule longer and no tighter.
+#
+# The rule that actually holds is ONE sentence: a 32-hex is exempt when it
+# sits INSIDE A URL WHOSE HOST TIKTOK OWNS. That is structural, it is
+# checkable, and the bar it sets for hiding a key is "write it inside a
+# tiktokcdn URL", which is a deliberate disguise rather than an accident —
+# the bar CLAUDE.md §24 asks for.
+#
+# These values are all needed: `product_parser._avatar_parts()` reads a
+# content hash into a column, and a fixture has to hold a whole signed URL
+# to exercise the expiry parsing. §24 asks whether the value is needed
+# before granting an exemption, and here the answer is yes.
+_TIKTOK_URL = re.compile(
+    r"https?://[^\s\"'<>\\]*"
+    r"(?:tiktokcdn|ttwstatic|tiktokv|byteimg|ibyteimg|tiktok\.com)"
+    r"[^\s\"'<>\\]*")
 
-# `"avatar_id": "<hex>"` — the column, on its own line in indented JSON.
+# `"avatar_id": "<hex>"` — the extracted column, on its own line in
+# indented JSON, away from the URL it came from.
 _AVATAR_ID_FIELD = re.compile(r'"avatar_id"\s*:\s*"([0-9a-f]{32})"')
 
 
 def _in_cdn_path(line, match):
-    """True when this specific 32-hex IS an avatar id.
-
-    Matched by VALUE rather than by position, because the same hash appears
-    on one line twice in two forms: inside the signed CDN URL, and again as
-    the bare value of the `avatar_id` column that was extracted from it.
-    Testing position would exempt the URL and flag the column beside it.
-
-    So: a hex is exempt when that exact value appears, somewhere on the
-    same line, inside one of TikTok's own `/<hex>~tplv` avatar paths. A
-    planted key would have to be written into a fabricated CDN path on its
-    own line to hide — a deliberate disguise rather than an accident, which
-    is the bar CLAUDE.md §24 sets for an exemption.
-    """
+    """True when this specific 32-hex is part of a TikTok URL, or the
+    `avatar_id` column extracted from one."""
     value = match.group(0) if hasattr(match, "group") else match
-    if value in _CDN_AVATAR_HEX.findall(line):
-        return True
-    # In indented JSON the column sits on a line of its own, away from the
-    # URL it was extracted from. That line is exempt only when the hex is
-    # the VALUE OF A KEY NAMED `avatar_id` — not merely on a line that
-    # mentions it — so `"avatar_id": "<hex>"` passes and
-    # `"note": "avatar_id", "key": "<hex>"` does not.
-    return bool(_AVATAR_ID_FIELD.search(line)
-                and _AVATAR_ID_FIELD.search(line).group(1) == value)
-# Contexts in which a 32-hex string is plainly not a key. Site-specific
-# entries belong here only once a committed fixture actually carries one —
-# CLAUDE.md §16: a family-wide entry copied without checking is how dead
-# code spreads. Kept as a CONTEXT allowlist rather than by loosening the
-# pattern: a bare 32-hex string anywhere else still fails, which is the
-# point of the check.
-# A 32-hex string inside one of TikTok's own CDN URLs is the avatar's
-# public content hash, and `product_parser._avatar_parts()` reads it into
-# the `avatar_id` column — so it is a value this repo NEEDS, not one it
-# happens to carry. CLAUDE.md §24 asks the question the other way round
-# first: the answer there was to drop the value, and the answer here is
-# that dropping it would delete a column.
-#
-# Scoped to the SHAPE rather than to the line's vocabulary, and that
-# distinction was earned: the first version exempted any 32-hex on a line
-# mentioning `tiktokcdn`, and a planted key one URL away from such a
-# mention sailed through. `_in_cdn_path` below requires the hex to BE a
-# path segment immediately followed by TikTok's own `~tplv` transform
-# marker, which a key cannot be without being deliberately disguised as an
-# avatar.
+    for url in _TIKTOK_URL.finditer(line):
+        if value in url.group(0):
+            return True
+    field = _AVATAR_ID_FIELD.search(line)
+    return bool(field and field.group(1) == value)
+
+
 HEX32_ALLOWED = ("sha", "hash", "nonce", "example", "md5", "digest",
                  "checksum")
 

@@ -2319,6 +2319,79 @@ def main():
     return 0
 
 
+def check_no_module_defines_a_name_twice():
+    """A second `def` of the same name silently replaces the first.
+
+    Found in this family by the offline suite rather than by reading: an
+    assembled engine carried TWO copies of its whole shared layer —
+    `_open_http`, `_prime_session`, `handle_captcha_if_present`, `_call`,
+    `_fetch_with_policy`, `_rotate_if_per_page` and `_worker_pool`, ten
+    functions, four hundred lines. Python bound the second copy and threw
+    the first away.
+
+    Nothing else could see it. The module imported, `--help` worked,
+    `compileall` passed, the undefined-name walk was clean, every engine
+    produced correct rows, and all three agreed with each other — because
+    the two copies were IDENTICAL. What gave it away was a check counting
+    solver call sites, which found four where the design has two.
+
+    That is the dangerous shape: a duplicate that is currently harmless
+    and becomes a silent wrong answer the moment somebody edits one copy.
+    CLAUDE.md §22's statement-after-return check is the same family of
+    defect — something the parser accepts and a reader never sees.
+    """
+    import collections
+    for name in ENGINES + ("product_parser", "page_flow", "output_writer",
+                           "proxy_pool", "env_config", "diff_runs",
+                           "captcha_solver", "fingerprint_client",
+                           "http_transport", "scraper_api_client",
+                           "tiktok_payload", "smoke_test"):
+        path = os.path.join(HERE, name + ".py")
+        if not os.path.exists(path):
+            continue
+        tree = ast.parse(open(path, encoding="utf-8").read())
+        seen = collections.Counter(
+            node.name for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                 ast.ClassDef)))
+        duplicates = {k: v for k, v in seen.items() if v > 1}
+        check("%s.py defines no name twice" % name, not duplicates,
+              "%r — the later definition silently replaces the earlier, and "
+              "nothing else in this repo can see that" % duplicates)
+
+
+def check_no_statement_follows_a_return_in_the_same_block():
+    """CLAUDE.md §22: found the same fifteen dead lines in six repos.
+
+    A function whose `def` line had been lost, leaving its docstring and
+    body absorbed into the end of the function above it. It parses, it
+    imports, `--help` works, `compileall` passes — and the
+    undefined-name walk cannot see it and SHOULD not, because it pools
+    every binding in a file rather than tracking scopes.
+
+    Measured across eighteen repos when it was written: 6 hits, 0 false
+    positives.
+    """
+    terminators = (ast.Return, ast.Raise, ast.Break, ast.Continue)
+    hits = []
+    for path in sorted(pathlib.Path(HERE).glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            for field in ("body", "orelse", "finalbody"):
+                block = getattr(node, field, None)
+                if not isinstance(block, list):
+                    continue
+                for i, stmt in enumerate(block[:-1]):
+                    if isinstance(stmt, terminators):
+                        nxt = block[i + 1]
+                        hits.append("%s:%d (after %s on line %d)"
+                                    % (path.name, nxt.lineno,
+                                       type(stmt).__name__.lower(),
+                                       stmt.lineno))
+    check("no statement follows a return/raise/break/continue", not hits,
+          "; ".join(hits[:6]))
+
+
 CHECKS = [v for k, v in sorted(globals().items()) if k.startswith("check_")
           and callable(v) and k != "check"]
 
