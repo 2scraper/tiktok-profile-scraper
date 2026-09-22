@@ -1,0 +1,202 @@
+# Real runs against tiktok.com. tests.yml (deliberately) never touches the
+# site, a credential or a paid product; everything that does is here.
+#
+# WHY THIS CANARY IS NOT GATED ON A SECRET
+# ----------------------------------------
+# CLAUDE.md §11 says a canary that cannot pass must SKIP rather than fail,
+# because a check that is always red teaches everyone to ignore checks. The
+# other half of that rule is §21's, proven again on rakuten-scraper: a
+# canary that CAN pass without a credential should never be gated on one.
+#
+# This repo is the second case. Its central README claim is that TikTok's
+# PROFILE route answers a bare datacentre address with no key, no proxy and
+# no account — measured 2026-09-22 from Hetzner Helsinki, served to plain
+# curl and to a browser alike. A GitHub runner is a bare datacentre address
+# in a different network. So this job runs a real scrape every morning and
+# is EXPECTED to be green, and if TikTok ever puts that route behind a
+# challenge the badge goes red the next day and the claim is retested
+# without anyone having to remember to.
+#
+# The paid path is the one that skips: `scraper-api` needs TWOCAPTCHA_KEY
+# and says so with a ::notice:: when it is absent.
+name: canary
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profiles:
+    name: a real multi-account scrape, with no credentials at all
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install the core and the Playwright engine
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-playwright.txt
+
+      # FOUR accounts rather than one, and each of them is here for a
+      # reason a single account could not test:
+      #
+      #   @tiktok        the widest measured stats/statsV2 gap (43,287)
+      #   @khaby.lame    nine-figure followers, ten-figure likes
+      #   @zachking      a gap of only 407 — the case a parser reading the
+      #                  wrong object would pass on by luck
+      #   @nosuchacct99xyz  no account at all, so the run exercises the
+      #                  "TikTok answered, and the answer was nothing"
+      #                  branch rather than only the happy one
+      #
+      # CLAUDE.md §11 asks a canary to exercise pagination; this route has
+      # none (a profile is one page), so the equivalent is exercising more
+      # than one ACCOUNT and more than one outcome.
+      - name: Scrape four accounts
+        id: run
+        run: |
+          set +e   # GitHub runs `run:` under `bash -e`, and a non-zero exit
+                   # would abort the step BEFORE the echo below.
+          python playwright_scraper.py \
+            --url "tiktok,khaby.lame,zachking,nosuchacct99xyz" \
+            --format both --out canary_profiles --dump-html
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Assert what the run actually produced
+        run: |
+          python - <<'PY'
+          import json, sys
+
+          rc = int("${{ steps.run.outputs.exit_code }}")
+          meta = json.load(open("canary_profiles.meta.json"))
+          rows = json.load(open("canary_profiles.json"))
+          fail = []
+
+          # Exit 5 is a DEFECT here, not an access condition. The sibling
+          # repos warn on it because their canaries use a remote API whose
+          # credential expires; this one uses none, so 5 is impossible
+          # rather than routine, and warning on it would be carrying
+          # another repo's excuse (CLAUDE.md §24).
+          if rc != 0:
+              fail.append(f"exit {rc}: the profile route answered something "
+                          f"other than a clean run")
+          if meta["status"] != "complete":
+              fail.append(f"status {meta['status']!r}, expected 'complete'")
+
+          # Three of the four handles exist. The fourth must be reported as
+          # unavailable rather than as a failure — reporting a nonexistent
+          # account as a block is the specific wrong answer this repo
+          # exists to avoid.
+          if len(rows) != 3:
+              fail.append(f"{len(rows)} rows, expected 3")
+          if meta.get("handles_unavailable") != ["nosuchacct99xyz"]:
+              fail.append(f"handles_unavailable = "
+                          f"{meta.get('handles_unavailable')!r}, expected "
+                          f"exactly the one handle with no account")
+
+          # The central column. A run whose rows came from `stats` is a run
+          # of ROUNDED numbers, and it must fail loudly rather than look
+          # healthy.
+          if meta.get("stats_sources") != {"statsV2": 3}:
+              fail.append(f"stats_sources = {meta.get('stats_sources')!r}; "
+                          f"every row must come from statsV2")
+
+          # Floors, never equalities: these counts move between any two
+          # requests (measured, nine refetches within an hour all differed).
+          # A floor taken from a single run at one hour is how a sibling
+          # ended up with a canary that was red every morning — so these are
+          # set well below the measured values on 2026-09-22 and are about
+          # ORDERS OF MAGNITUDE, not about today's number.
+          floors = {"tiktok": 50_000_000, "khaby.lame": 100_000_000,
+                    "zachking": 50_000_000}
+          by_handle = {r["username"]: r for r in rows}
+          for handle, floor in floors.items():
+              row = by_handle.get(handle)
+              if row is None:
+                  fail.append(f"@{handle} is missing from the output")
+                  continue
+              if not isinstance(row["follower_count"], int):
+                  fail.append(f"@{handle}: follower_count is not an int")
+              elif row["follower_count"] < floor:
+                  fail.append(f"@{handle}: {row['follower_count']:,} "
+                              f"followers is below the {floor:,} floor — "
+                              f"either the account changed enormously or "
+                              f"the ROUNDED object is being read")
+              if not row.get("sku", "").isdigit():
+                  fail.append(f"@{handle}: sku is not a numeric account id")
+              if row.get("stats_source") != "statsV2":
+                  fail.append(f"@{handle}: read from "
+                              f"{row.get('stats_source')!r}")
+              # The signed avatar URL perishes; the id beside it must not.
+              if not row.get("avatar_id"):
+                  fail.append(f"@{handle}: no avatar_id — the signed URL "
+                              f"would make every run report a change")
+
+          if fail:
+              print("::error::canary FAILED")
+              for line in fail:
+                  print(f"  - {line}")
+              sys.exit(1)
+          print(f"canary OK: {len(rows)} accounts, all from statsV2, "
+                f"1 handle correctly reported unavailable, "
+                f"status {meta['status']}")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: canary-profiles
+          path: |
+            canary_profiles.json
+            canary_profiles.csv
+            canary_profiles.meta.json
+            canary_profiles_profile_*.html
+          retention-days: 7
+
+  scraper-api:
+    name: the paid path (skips without a key)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # `secrets` is not available in a job-level `if`, so presence is
+      # tested through job env and read in each step's `if` (CLAUDE.md §11).
+      HAS_KEY: ${{ secrets.TWOCAPTCHA_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: env.HAS_KEY == 'true'
+      - uses: actions/setup-python@v5
+        if: env.HAS_KEY == 'true'
+        with:
+          python-version: "3.13"
+
+      - name: Install the core
+        if: env.HAS_KEY == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Fetch one profile through the Scraper API
+        if: env.HAS_KEY == 'true'
+        env:
+          # Through the ENVIRONMENT, never a --flag: a secret in argv is
+          # readable by anything that can run `ps` (CLAUDE.md §3, §11).
+          TWOCAPTCHA_KEY: ${{ secrets.TWOCAPTCHA_KEY }}
+        run: |
+          set +e
+          python scraper_api_client.py --url nasa --out canary_api
+          echo "api_exit=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Say why this was skipped
+        if: env.HAS_KEY != 'true'
+        run: |
+          echo "::notice::Skipped: TWOCAPTCHA_KEY is not set. This path is"\
+               "the only one in this repo that costs money, and the repo's"\
+               "own README says it is unnecessary for the profile route —"\
+               "so a missing key is an expected state, not a failure."
