@@ -323,15 +323,15 @@ captures. It passes with no engine library installed at all, and CI fails
 if an engine group reports an *unexpected* skip — "skipped, engine absent"
 reads identically to a real import error.
 
-One skip is expected and is recorded rather than hidden: the marker set has
-**not** been verified against a page fetched over `--cdp-endpoint`. The
-2Captcha Scraping Browser injects its own captcha hunters into every page it
-loads, and a marker set that has not been scored against one can report a
-blocked run on a perfectly good page. Every Scraping Browser profile
-available while this repo was built had expired (`401 deny_no_user`), so no
-such capture exists yet. The four markers this repo carries are ByteDance's
-own and are not names that extension is known to inject — but "not known
-to" is not "measured not to", and the suite says so out loud.
+It also holds the fixture CLAUDE.md asks every repo in this family to
+hold: the material the 2Captcha Scraping Browser's auto-solve extension
+injects into every page it loads. Measured 2026-09-22 on a real
+`--cdp-endpoint` fetch of a page TikTok served — 16 `chrome-extension://`
+tags, 4 `hunter.js`, and `cf-turnstile` once. That last one is the trap:
+carried as a marker, it reports a blocked run on a perfectly good page
+over a paid connection. This repo does not carry it, and the check
+splices the injection into every served fixture to keep that true rather
+than accidental.
 
 ---
 
