@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tiktok-profile-scraper"
-version = "0.1.0"
+version = "0.1.1"
 description = "TikTok profile scraper: follower, like and video counts, bio, verification and shop-seller flags, read from the exact statsV2 object rather than the rounded one TikTok publishes beside it."
 readme = "README.md"
 license = "MIT"
