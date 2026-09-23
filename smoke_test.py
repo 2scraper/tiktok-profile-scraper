@@ -949,10 +949,9 @@ def check_exit_codes():
           (3, 4, 5, 6))
     check("page_cap_reached is a COMPLETE stop reason",
           "page_cap_reached" in O.COMPLETE_STOP_REASONS)
-    # `/explore` and `/careers` are each served at ONE address holding
-    # their whole result set — measured, not assumed: every pagination
-    # parameter tried returned a byte-identical payload — so a run that
-    # stopped after one fetch fetched the whole route.
+    # Carried for the family's shared vocabulary: no engine in this repo
+    # emits it today, but a route served at ONE address holding its whole
+    # result set is complete after one fetch, and must stay so.
     check("single_page_route is complete by construction AND by measurement",
           "single_page_route" in O.COMPLETE_STOP_REASONS)
     # Carried for the family's shared vocabulary and unreachable here: this
@@ -981,7 +980,7 @@ def check_a_run_that_finds_nothing_writes_nothing():
         equal("--allow-empty WRITES the empty file...", 
               json.load(open(prefix + ".json", encoding="utf-8")), [])
         # ...and still reports exit 4. Pinned deliberately (§10: pin a known
-        # behaviour rather than half-guarding it): "zero businesses" is true
+        # behaviour rather than half-guarding it): "zero rows" is true
         # whether or not the file was written, and a caller that wanted the
         # file still wants to know the result was empty.
         equal("...and still reports exit 4, because it IS empty", code, 4)
@@ -1979,22 +1978,19 @@ def check_per_page_rotation_actually_rotates_per_page():
 
 
 def check_a_site_that_answered_is_not_a_run_that_failed():
-    """Exit 4 and exit 5 answer different questions, and two states sat on
-    the wrong side of the line for a day.
+    """Exit 4 and exit 5 answer different questions.
 
-    `comments_disabled` and `video_unavailable` are the site ANSWERING:
-    this video takes no comments, this video is not there. Both arrive as
-    HTTP 200 with a large, healthy payload. The honest code for a zero-row
-    run is 4 — "we asked, and the answer was nothing" — and not 5, which
-    means the content was never obtained at all and sends a reader to
-    check a proxy that is working fine.
+    `user_unavailable` is the site ANSWERING: the handle has no account behind it. The honest code for a zero-row run is
+    4 — "we asked, and the answer was nothing" — and not 5, which means
+    the content was never obtained at all and sends a reader to check a
+    proxy that is working fine.
 
-    They regressed to 5 when the family unified its exit codes: that rule
-    keys on "did the run complete" rather than on a list of failure names,
-    which is the right shape and stays. What was wrong was the COMPLETE
-    set, which enumerated only the ways a pagination LOOP can end and not
-    the ways a SITE can answer. Measured the day after: both URLs returned
-    5 where they had returned 4.
+    A sibling repo (youtube-scraper) had two such states regress to 5 when
+    the family unified its exit codes: that rule keys on "did the run
+    complete" rather than on a list of failure names, which is the right
+    shape and stays. What was wrong there was the COMPLETE set, which
+    enumerated only the ways a pagination LOOP can end and not the ways a
+    SITE can answer.
 
     Pinned in both directions, because a rule that made everything
     complete would pass the first half of this check and be worse than the
@@ -2529,6 +2525,66 @@ def check_the_scraping_browsers_own_extension_does_not_read_as_a_challenge():
               burned in CDP_INJECTED,
               "if this stops being true the fixture is stale — recapture "
               "it over --cdp-endpoint")
+
+
+def check_diff_runs_watches_this_repos_columns():
+    """Every column diff_runs.py watches exists on this repo's row class.
+
+    Its TRACKED_FIELDS once named a sibling's columns (the account fields
+    of tiktok-profile-scraper), so the diff compared almost nothing and
+    reported "0 changed" on runs where a watched value had changed. Pinned
+    by name AND by behaviour: a changed tracked column must be reported.
+    """
+    import copy
+    import dataclasses
+    import diff_runs
+    import output_writer
+    names = set()
+    for cls in output_writer.ROW_CLASS_BY_MODE.values():
+        names |= {f.name for f in dataclasses.fields(cls)}
+    check("diff_runs tracks at least one column",
+          len(diff_runs.TRACKED_FIELDS) > 0)
+    missing = [n for n in diff_runs.TRACKED_FIELDS + diff_runs.SOURCE_ONLY_FIELDS
+               if n not in names]
+    check("every column diff_runs watches exists on the row class",
+          not missing, "not on the row class: %r" % missing)
+    check("SOURCE_ONLY_FIELDS is a subset of TRACKED_FIELDS",
+          set(diff_runs.SOURCE_ONLY_FIELDS) <= set(diff_runs.TRACKED_FIELDS))
+    equal("diff_runs splits source_changed on stats_source", diff_runs.SOURCE_COLUMN,
+          "stats_source")
+    check("SOURCE_COLUMN is a real column or None",
+          diff_runs.SOURCE_COLUMN is None or diff_runs.SOURCE_COLUMN in names)
+
+    def bumped(value):
+        if isinstance(value, bool):
+            return not value
+        if isinstance(value, (int, float)):
+            return value + 1
+        if isinstance(value, list):
+            return value + ["changed"]
+        return str(value) + " (changed)"
+
+    with open(os.path.join(HERE, "sample_output.json"), encoding="utf-8") as fh:
+        base = json.load(fh)[0]
+    plain = [f for f in diff_runs.TRACKED_FIELDS
+             if f not in diff_runs.SOURCE_ONLY_FIELDS and base.get(f) is not None]
+    check("the sample row has a tracked column to change", bool(plain))
+    if plain:
+        after = copy.deepcopy(base)
+        after[plain[0]] = bumped(base[plain[0]])
+        result = diff_runs.diff_products([base], [after])
+        equal("a changed %s is reported as changed" % plain[0],
+              [list(c["changes"]) for c in result["changed"]], [[plain[0]]])
+    split = [f for f in diff_runs.SOURCE_ONLY_FIELDS if base.get(f) is not None]
+    if diff_runs.SOURCE_COLUMN and split:
+        after = copy.deepcopy(base)
+        after[split[0]] = bumped(base[split[0]])
+        after[diff_runs.SOURCE_COLUMN] = str(base.get(diff_runs.SOURCE_COLUMN)) + "-other"
+        result = diff_runs.diff_products([base], [after])
+        check("a %s difference with a %s difference is source_changed"
+              % (split[0], diff_runs.SOURCE_COLUMN),
+              len(result["source_changed"]) == 1 and not result["changed"],
+              "got %r" % result)
 
 
 def check_scraper_api_waitfor_is_object_and_status_is_http_code():

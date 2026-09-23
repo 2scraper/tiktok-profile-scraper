@@ -695,10 +695,9 @@ def _prime_session(session, args, url: str) -> Optional[int]:
     A no-op on the HTTP transport, which has no cookie jar worth warming
     and would only pay for one extra page.
 
-    This does NOT read a client version out of the page, the way the
-    YouTube repo this core came from does — TikTok's profile route takes
-    no such parameter, and carrying the call anyway would be a request per
-    run that nothing consumes.
+    This does NOT read a client version out of the page: TikTok's profile
+    route takes no such parameter, and carrying the call anyway would be a
+    request per run that nothing consumes.
     """
     if isinstance(session, HttpSession):
         return None
@@ -972,7 +971,7 @@ def _fetch_with_policy(session_box: Dict[str, Any], pw, args,
 
 
 # ---------------------------------------------------------------------------
-# --mode comments
+# Proxy rotation between pages
 # ---------------------------------------------------------------------------
 
 
@@ -990,11 +989,6 @@ def _rotate_if_per_page(session_box, pw, args, pool, why: str) -> bool:
     issued against exit A and replayed from exit B are a stronger signal
     than either address alone, so the session is torn down and rebuilt
     rather than having its proxy swapped underneath it.
-
-    Safe to do mid-chain on this site, and that is measured rather than
-    assumed: a continuation token fetched by one client was replayed
-    successfully by a bare HTTP client with no cookies at all, so the
-    token is not bound to the session that received it.
     """
     if not pool or not pool.rotates_per_page() or len(pool) < 2:
         return False

@@ -11,6 +11,32 @@ in one, the note leads with it.
 ## [Unreleased]
 
 ### Fixed
+
+> **`source_changed` never fired.** `diff_runs.py`'s source-split tuple was
+> empty, so a count read from the rounded `stats` fallback diffed against
+> an exact `statsV2` count was reported as the account having changed —
+> the opposite of what `output_writer.py` and the README say. The count
+> columns now go to `source_changed` when `stats_source` differs, and
+> `smoke_test.py` checks it.
+
+- **Donor prose removed from the shared core.** `output_writer.py`,
+  `diff_runs.py`, the engines, `page_flow.py`, `smoke_test.py`,
+  `.github/ci_checks.py` and the `Dockerfile` carried text from the repos
+  this core was copied from — YouTube comment threads, `--sort top`,
+  reply threads, job listings, "the business", `--mode comments --out
+  software-engineer` — describing those sites as if they were this one.
+  Rewritten from this repo's own README, code and fixtures, or deleted
+  where there was no measured equivalent. Explicit sibling provenance
+  ("measured on tiktok-profile-scraper's route", "a sibling repo
+  (youtube-scraper) had…") is kept and now says whose it is.
+- `diff_runs.py`'s summary printed `@ company_name` and "pay not stated"
+  for every added or removed row; it now prints the handle and the
+  follower count.
+- The engines' `_prime_session` docstring no longer describes the YouTube
+  repo this core came from.
+
+- `captcha_solver.py`'s docstring pointed at a "No DataDome solver" section
+  that does not exist in this repo (it came with the copied core). Removed.
 - **The Scraper API engine failed on every `--wait-text` / `--wait-element` /
   `--wait-state` call, and was billed for it.** It sent `waitFor` as a
   JSON-encoded string; measured 2026-09-23 the live API answers that with

@@ -359,10 +359,9 @@ def _launch_local(pw, args, pool: Optional[ProxyPool]) -> _BrowserSession:
     page = context.new_page()
     if fingerprint is not None:
         _apply_fingerprint(context, page, fingerprint, user_agent)
-    # The `client_version` slot is inherited from the site this core came
-    # from, which states one in its own page. TikTok's profile route takes
-    # no such parameter, so it stays empty rather than carrying a constant
-    # nothing reads (CLAUDE.md §17).
+    # The `client_version` slot is part of the shared session interface.
+    # TikTok's profile route takes no such parameter, so it stays empty
+    # rather than carrying a constant nothing reads (CLAUDE.md §17).
     return _BrowserSession(browser, context, page, proxy_url,
                            "", user_agent)
 
@@ -527,10 +526,9 @@ def _prime_session(session, args, url: str) -> Optional[int]:
     A no-op on the HTTP transport, which has no cookie jar worth warming
     and would only pay for one extra page.
 
-    This does NOT read a client version out of the page, the way the
-    YouTube repo this core came from does — TikTok's profile route takes
-    no such parameter, and carrying the call anyway would be a request per
-    run that nothing consumes.
+    This does NOT read a client version out of the page: TikTok's profile
+    route takes no such parameter, and carrying the call anyway would be a
+    request per run that nothing consumes.
     """
     if isinstance(session, HttpSession):
         return None
