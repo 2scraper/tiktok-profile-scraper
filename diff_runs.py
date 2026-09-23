@@ -3,68 +3,42 @@
 diff_runs.py
 -------------
 Compares two output files from this project (JSON, as written by
-output_writer.save) and reports what changed between them, keyed on `sku`.
+output_writer.save) and reports what changed between them, keyed on `sku`,
+which here is the account's permanent numeric id rather than its @handle —
+so a renamed account is a change in `username`, not a deletion plus an
+arrival.
 
-    python3 diff_runs.py --old restaurants.2026-09-01.json \\
-                          --new restaurants.2026-09-07.json
+    python3 diff_runs.py --old accounts.2026-09-01.json \\
+                          --new accounts.2026-09-07.json
 
 Typical use is a scheduled re-run kept under a dated filename, diffed against
 the previous one:
 
-    python3 playwright_scraper.py --text restaurants --location "New York, NY" \\
-        --out "restaurants_$(date +%F)"
-    python3 diff_runs.py --old "restaurants_$(ls -t restaurants_*.json | sed -n 2p)" \\
-                          --new "restaurants_$(date +%F).json" --out diff.json
+    python3 playwright_scraper.py --url nasa,zachking --out "accounts_$(date +%F)"
+    python3 diff_runs.py --old "$(ls -t accounts_*.json | grep -v meta | sed -n 2p)" \\
+                          --new "accounts_$(date +%F).json" --out diff.json
 
 Four buckets, each keyed on sku:
 
   added          — sku present in --new, absent from --old
-  removed        — sku present in --old, absent from --new: the listing was
-                   filled or withdrawn, or simply fell outside the pages this
-                   run fetched
-  changed        — sku present in both, with a different title, rate range,
-                   pay period, commitment, work arrangement, location, or
-                   slot count. See TRACKED_FIELDS.
-  source_changed — sku present in both, but one row came from the INDEX
-                   (`explore`) and the other from a DETAIL page (`detail`),
-                   and they differ on a column only one of the two fills.
+  removed        — sku present in --old, absent from --new: the account is
+                   gone or unavailable, or this run's --url did not name it
+  changed        — sku present in both, with a different count, bio, flag
+                   or published setting. See TRACKED_FIELDS.
+  source_changed — sku present in both, but one row's counts were read from
+                   the exact `statsV2` object and the other's from the
+                   rounded `stats` fallback, and they differ on a count.
                    Reported separately because this says something about our
-                   own two snapshots rather than about the listing — and
+                   own two snapshots rather than about the account — and
                    --fail-on-change deliberately ignores it.
 
-TWO THINGS TO KNOW BEFORE READING A DIFF OF THIS SITE
------------------------------------------------------
-**`removed` usually does not mean deleted.** A comments run holds the
-first N pages of an ordering, and on a video with two and a half million
-comments that is a sample rather than a census. Under `--sort top` the
-ordering is a live relevance ranking, so a comment drops out of a
-five-page file because something above it gained likes — nothing happened
-to the comment at all. Under `--sort newest` the window slides forward as
-new comments arrive, and the oldest rows fall off the end of it.
-
-Two runs are comparable as a census only when both covered the same
-ground, which on this site means the same ordering, the same `--pages`,
-and the same answer to `--replies`. The first is refused outright; the
-other two are reported as notes, because a smaller run is still worth
-diffing as long as the reader knows what `removed` can mean.
-
-Where a route states its own total — the Ad Library does, per region — the
-sidecar records it beside what the run collected, and a diff should be read
-in that light: a capped run's `removed` can mean "outside this run's slice"
-rather than "gone".
-
-**`position` and `page` are deliberately not tracked, and here that is a
-necessity rather than a choice.** Under `--sort top` the order IS the
-site's live relevance ranking: a comment that gains likes overnight moves,
-and every comment below it moves with it. Tracking position would report
-most of the file as changed every night, and a diff that is always noisy is
-one nobody reads.
-
-Under `--sort newest` the order is chronological and much steadier — but a
-new comment at the top still shifts every row beneath it by one, which is
-the same noise arriving by a different route. So neither ordering makes
-position a useful thing to diff, and both make the SORT itself worth
-refusing to compare across, which `_runs_are_comparable` does.
+ONE THING TO KNOW BEFORE READING A DIFF OF THIS SITE
+----------------------------------------------------
+**The counts move on their own.** Nine refetches of one account within an
+hour on 2026-09-22 returned 1,785,290 … 1,785,310 followers, all different,
+none wrong. So two runs an hour apart legitimately differ on almost every
+row, and `--fail-on-change` here means "tell me when a number moved", not
+"tell me when something broke".
 
 A row this project's parser could not recover a sku for (None) cannot be
 matched across runs at all, so it is counted and reported separately rather
@@ -80,7 +54,7 @@ from typing import Dict, List, Optional, Tuple
 
 from output_writer import UNIQUE_BY_SKU_MODES
 
-# What is worth watching on a comment, and nothing else.
+# What is worth watching on an account, and nothing else.
 #
 # EVERY NAME HERE MUST EXIST ON THE ROW CLASS, and that is not a style
 # rule. This tuple arrived from the repo this one was ported from naming
@@ -90,22 +64,8 @@ from output_writer import UNIQUE_BY_SKU_MODES
 # no monitor, because it reports success. `smoke_test.py` pins every name
 # here against the dataclass.
 #
-# A shop's fields are absent because a comment has no price, stock or
-# discount — porting them would be dead code that looks load-bearing
-# (CLAUDE.md §4). What changes on a comment is its TEXT (it was edited),
-# its ENGAGEMENT, and the badges the creator controls.
-#
 # DELIBERATELY NOT TRACKED, and each is a measurement rather than an
 # oversight:
-#
-#   `published_time_text` and `published_at_approx` — these move ON THEIR
-#     OWN. The site renders a relative string, so a comment that said
-#     "3 days ago" last night says "4 days ago" tonight without anything
-#     having happened. Measured directly: two runs 88 seconds apart
-#     disagreed on three of forty rows ("25 minutes ago" -> "27 minutes
-#     ago", "7 hours ago" -> "8 hours ago"). Tracking them would make
-#     every nightly diff report most of the file as changed, and a diff
-#     that is always noisy is one nobody reads.
 #
 #   `follower_count`, `likes_count`, `video_count` ARE tracked, and they
 #     are the point of this repo. Note that they MOVE: nine refetches of
@@ -182,22 +142,24 @@ TRACKED_FIELDS = (
     "status_code",
 )
 
-# The subset that only ONE source populates. (Named
-# PROFILE_ONLY_FIELDS because that is what the comparison below
-# reads; the donor core spells it that way and a second name would
-# be a constant nothing consults — CLAUDE.md §17.)
-#
-# Empty on this repo, and stated rather than deleted. There is exactly one
-# route and one payload here, so there is no second source whose coverage
-# differs — nothing can be present in one run's rows and structurally
-# absent from another's. `stats_source` still drives `source_changed`,
-# because a run read from the rounded `stats` object is not comparable
-# count-for-count against one read from `statsV2`.
-#
-# Its siblings are not like this: tiktok-video-scraper reads an embed
-# payload AND a video page, which carry different fields, and that repo's
-# copy of this tuple is not empty.
-PROFILE_ONLY_FIELDS = ()
+# The column that says which source a row was read from, and the tracked
+# columns only ONE value of it can be trusted on. There is one route and
+# one payload here, but that payload publishes every count twice: exactly
+# in `statsV2` and rounded to three significant figures in `stats`, which
+# the parser falls back to only when `statsV2` is absent. A count diffed
+# across the two is rounding, so it goes to `source_changed` — which is
+# what output_writer.py and the README say happens, and what an empty
+# tuple here silently did not do.
+SOURCE_COLUMN = "stats_source"
+SOURCE_ONLY_FIELDS = (
+    "follower_count",
+    "following_count",
+    "likes_count",
+    "video_count",
+    "friend_count",
+    "digg_count",
+    "likes_per_video",
+)
 
 
 def _load(path: str) -> List[dict]:
@@ -242,23 +204,21 @@ def diff_products(old: List[dict], new: List[dict]) -> dict:
         if not field_changes:
             continue
 
-        # A row whose `stats_source` differs between runs is not comparable on
-        # the profile-only columns: a listing row leaves them null and a
-        # profile row fills them, so every one of them would read as a change
-        # and none of it would be about the business. Reporting it as a
-        # change would be a false alarm about the site; the other columns
-        # still compare fine.
-        sources = (before.get("stats_source"), after.get("stats_source"))
+        # A row whose SOURCE_COLUMN differs between runs is not comparable
+        # on SOURCE_ONLY_FIELDS: a count read from the rounded `stats` object differs from the exact `statsV2` figure by rounding alone, so the difference would read as a change and none of it would be about the account. Reporting it as a change would be a
+        # false alarm about the site; the other columns still compare fine.
+        sources = ((before.get(SOURCE_COLUMN), after.get(SOURCE_COLUMN))
+                   if SOURCE_COLUMN else (None, None))
         if sources[0] != sources[1] and any(f in field_changes
-                                            for f in PROFILE_ONLY_FIELDS):
-            profile_part = {f: v for f, v in field_changes.items()
-                            if f in PROFILE_ONLY_FIELDS}
+                                            for f in SOURCE_ONLY_FIELDS):
+            source_part = {f: v for f, v in field_changes.items()
+                           if f in SOURCE_ONLY_FIELDS}
             other_part = {f: v for f, v in field_changes.items()
-                          if f not in PROFILE_ONLY_FIELDS}
+                          if f not in SOURCE_ONLY_FIELDS}
             source_changed.append({
                 "sku": sku, "title": after.get("title"),
-                "stats_source": {"old": sources[0], "new": sources[1]},
-                "changes": profile_part,
+                SOURCE_COLUMN: {"old": sources[0], "new": sources[1]},
+                "changes": source_part,
             })
             field_changes = other_part
             if not field_changes:
@@ -277,30 +237,30 @@ def diff_products(old: List[dict], new: List[dict]) -> dict:
     }
 
 
+def _describe(p: dict) -> str:
+    """The one or two columns that make an added/removed line readable."""
+    return f"@{p.get('username') or '?'}  {p.get('follower_count')} followers"
+
+
 def _print_summary(result: dict) -> None:
     print(f"[+] {len(result['added'])} added, {len(result['removed'])} removed, "
           f"{len(result['changed'])} changed, "
           f"{len(result['source_changed'])} not comparable across run kinds.")
     for p in result["added"]:
-        print(f"  + {p.get('sku')}  {p.get('title')}  "
-              f"@ {p.get('company_name') or '?'}  "
-              f"{p.get('compensation') or 'pay not stated'}")
+        print(f"  + {p.get('sku')}  {p.get('title')}  {_describe(p)}")
     for p in result["removed"]:
-        print(f"  - {p.get('sku')}  {p.get('title')}  "
-              f"@ {p.get('company_name') or '?'}  "
-              f"{p.get('compensation') or 'pay not stated'}")
+        print(f"  - {p.get('sku')}  {p.get('title')}  {_describe(p)}")
     for c in result["changed"]:
         deltas = ", ".join(f"{f}: {v['old']!r} -> {v['new']!r}"
                            for f, v in c["changes"].items())
         print(f"  ~ {c['sku']}  {c['title']}  {deltas}")
     for c in result["source_changed"]:
-        src = c["stats_source"]
+        src = c[SOURCE_COLUMN]
         deltas = ", ".join(f"{f}: {v['old']!r} -> {v['new']!r}"
                            for f, v in c["changes"].items())
         print(f"  ? {c['sku']}  {c['title']}  {deltas}  "
-              f"[stats_source {src['old']!r} -> {src['new']!r}: a listing row "
-              f"leaves these columns null and a profile row fills them, so "
-              f"this is not a change in the business]")
+              f"[{SOURCE_COLUMN} {src['old']!r} -> {src['new']!r}: "
+              f"one side read the rounded `stats` fallback, so this is rounding, not a change in the account]")
     unmatchable = result["unmatchable_old"] + result["unmatchable_new"]
     if unmatchable:
         print(f"[!] {unmatchable} row(s) across both files had no sku or a "
@@ -330,7 +290,7 @@ def _check_comparable(args) -> bool:
     3 of 10 is missing every product on pages 4-10, and diffing it against
     yesterday's full run reports all of them as `removed` — reading as "these
     products were delisted" when in fact they were simply never fetched.
-    Prices of the SKUs both runs DID see are still comparable, which is why
+    The rows both runs DID see are still comparable, which is why
     this is a refusal with a --force escape hatch rather than a hard error.
     """
     problems = []
@@ -344,14 +304,14 @@ def _check_comparable(args) -> bool:
             modes[label] = mode
         if mode and mode not in UNIQUE_BY_SKU_MODES:
             # This tool's whole premise is one row per `sku`, diffed on
-            # price. A mode that produces many rows per sku would give a diff
-            # whose every line is an artefact of two rows sharing an id, so
-            # it is refused outright rather than answered. Both of this
-            # repo's current modes qualify; the check is here so that adding
-            # one that does not is caught rather than discovered.
+            # TRACKED_FIELDS. A mode that produces many rows per sku would
+            # give a diff whose every line is an artefact of two rows
+            # sharing an id, so it is refused outright rather than answered.
+            # Every mode this repo has qualifies; the check is here so that
+            # adding one that does not is caught rather than discovered.
             problems.append(
                 f"{label} ({path}) is a {mode!r} run, which is not one row "
-                f"per sku. This tool diffs one row per sku on price, so there "
+                f"per sku. This tool diffs one row per sku, so there "
                 f"is nothing here it can compare.")
         if status != "complete":
             problems.append(
@@ -359,25 +319,11 @@ def _check_comparable(args) -> bool:
                 f"{meta.get('pages_completed')} of {meta.get('pages_requested')} "
                 f"page(s), reason {meta.get('stop_reason')!r}")
     if len(set(modes.values())) > 1:
-        kinds = set(modes.values())
-        # `careers` against either marketplace mode is the severe case and
-        # deserves its own sentence: the two share NO ids at all, so every
-        # row would be reported as both added and removed. `listings`
-        # against `job` is milder — same id space, different columns — but
-        # still describes the mode change rather than the catalogue.
-        if "comments" in kinds and kinds - {"comments"}:
-            problems.append(
-                f"the two runs are different POPULATIONS ({modes}). A "
-                f"comments run is keyed by comment id and a video or "
-                f"search run by 11-character video id; the two sets have "
-                f"no id in common, so every row would be reported as both "
-                f"added and removed.")
-        else:
-            problems.append(
-                f"the two runs are different modes ({modes}). Rows from "
-                f"different modes carry different columns, so "
-                f"`added`/`removed` would describe the mode change rather "
-                f"than the site.")
+        problems.append(
+            f"the two runs are different modes ({modes}). Rows from "
+            f"different modes carry different columns, so "
+            f"`added`/`removed` would describe the mode change rather "
+            f"than the site.")
 
     # A SORT GUARD, family core. Where rows carry a `sort` column, two runs
     # under different orderings are different SAMPLES of a capped listing,
@@ -403,43 +349,11 @@ def _check_comparable(args) -> bool:
             f"each, so the diff would report the sampling "
             f"rather than the site.")
 
-    # And whether either run was CAPPED, which changes what `removed` means.
-    for label, path in (("--old", args.old), ("--new", args.new)):
-        _, meta = _run_status(path)
-        meta = meta or {}
-        total = meta.get("total_comments")
-        collected = meta.get("comments_collected")
-        share = meta.get("sample_share_pct")
-        if total and collected and collected < total:
-            # The caveat is spelled per ORDERING, because it is much
-            # stronger under one than the other: `top` is a live ranking,
-            # so a comment leaving a five-page sample usually means the
-            # ranking moved, while under `newest` a sample slides forward
-            # in time and the older rows fall off the end.
-            ordering = meta.get("sort")
-            why = {
-                "top": "which on a `top` ordering it usually does: that "
-                       "ordering is a live ranking",
-                "newest": "which on a `newest` ordering it usually does: "
-                          "the window slides forward as comments arrive",
-            }.get(ordering, "which is the usual explanation")
-            print(f"[i] {label} ({path}) holds {collected:,} of the "
-                  f"video's {total:,} comments"
-                  + (f" ({share}%)" if share else "") + " — a complete run, "
-                  f"and a sample. A `removed` line may mean the sample "
-                  f"moved rather than that a comment was deleted, "
-                  f"{why}. CLAUDE.md §21: complete and exhaustive are "
-                  f"different words.")
-        if meta.get("replies") is False and meta.get("mode") == "comments":
-            print(f"[i] {label} ({path}) did not expand replies, so it "
-                  f"holds top-level comments only. A diff against a run "
-                  f"that did would report every reply as added.")
-
     if not problems:
         return True
 
-    # A generic headline, because the reasons below are no longer only about
-    # completeness: a mode mismatch and a reviews run are refused too, and a
+    # A generic headline, because the reasons below are not only about
+    # completeness: a mode mismatch and an ordering mismatch are refused too, and a
     # message naming the wrong reason sends the reader looking in the wrong
     # place.
     print("[!] Refusing to diff these two runs:")
@@ -488,10 +402,10 @@ def main() -> int:
             json.dump(result, f, ensure_ascii=False, indent=2)
         print(f"[+] Full diff written to {args.out}")
 
-    # `source_changed` is not a reason to fail: it means one row came from a
-    # listing run and the other from a profile run, so the columns only a
-    # profile fills differ. That says something about our own two snapshots
-    # rather than about the business, and alerting on it would train whoever
+    # `source_changed` is not a reason to fail: it means one row's counts
+    # came from the exact `statsV2` object and the other's from the rounded
+    # `stats` fallback. That says something about our own two snapshots
+    # rather than about the account, and alerting on it would train whoever
     # reads the alert to ignore it.
     if args.fail_on_change and (result["added"] or result["removed"] or result["changed"]):
         return 1

@@ -67,12 +67,9 @@ CREDENTIALLED_URL = re.compile(
 CREDENTIAL_ALLOWED = (
     # documentation placeholders
     "USER:PASS", "user:pass", "ACCOUNT:PASSWORD", "LOGIN:PASSWORD",
-    # This repo's April 2026 prototype README documented a proxy URL as
-    # `http://username:password@…`. That commit is in the history and cannot
-    # be removed from it, so --history-check would fail forever on a literal
-    # placeholder — which would teach everyone to ignore the one check that
-    # exists to be read exactly once, before publishing. Allowed by NAME, so
-    # a real login still fails.
+    # scraper_api_client.py's masker docstring names the shape it removes
+    # (`username:password` inside a URL). Allowed by NAME, so a real login
+    # still fails.
     "username:password",
     "{login}", "{user}", "password}@", "***", "u:p@h",
     "login:password@host:port",     # the shape a refusal message prints
@@ -130,12 +127,13 @@ HEX32_ALLOWED = ("sha", "hash", "nonce", "example", "md5", "digest",
 # them the scan skipped the BIGGEST files in the repository — the generated
 # fixtures and the committed sample, which are captured page payload and
 # therefore exactly where a front-end key or a session token arrives.
-# Measured 2026-09-21 by planting a real-shaped 2captcha key and a
-# `ws://user:pass@` URL into `fixtures_generated.json`: the scan reported
-# "nothing credential-shaped" over 35 files.
+# Measured 2026-09-21 on a sibling (rakuten-scraper, CLAUDE.md §24) by
+# planting a real-shaped 2captcha key and a `ws://user:pass@` URL into
+# `fixtures_generated.json`: the scan reported "nothing credential-shaped".
 #
 # Added with NO allowlist, which is the point: the real fixtures and sample
-# contain zero 32-hex strings and zero credentialled URLs, so the strictest
+# contain zero 32-hex strings outside a TikTok URL or the `avatar_id`
+# column taken from one, and zero credentialled URLs, so the strictest
 # rule covers the largest files rather than acquiring an exception that a
 # real key could later hide behind (CLAUDE.md §24).
 SCANNED_SUFFIXES = (".py", ".md", ".txt", ".yml", ".yaml", ".example",

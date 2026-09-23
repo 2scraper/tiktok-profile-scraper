@@ -4,7 +4,7 @@ Shared by all three browser engines and the HTTP path so they cannot
 quietly disagree about whether a response is worth retrying, worth paying
 a solver for, or worth reporting as a block. Three copies of that triage
 drift, and the drift is silent: one engine reporting exit 3 where its twin
-reports exit 0 on the same video (CLAUDE.md §1).
+reports exit 0 on the same account (CLAUDE.md §1).
 
 Policy and pure algorithms only. No JavaScript crosses this boundary —
 Selenium's `execute_script` takes a function BODY with an explicit
