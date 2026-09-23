@@ -1,5 +1,13 @@
 # tiktok-profile-scraper
 
+[![release](https://img.shields.io/github/v/release/2scraper/tiktok-profile-scraper?sort=semver)](https://github.com/2scraper/tiktok-profile-scraper/releases)
+[![tests](https://github.com/2scraper/tiktok-profile-scraper/actions/workflows/tests.yml/badge.svg)](https://github.com/2scraper/tiktok-profile-scraper/actions/workflows/tests.yml)
+[![canary](https://github.com/2scraper/tiktok-profile-scraper/actions/workflows/canary.yml/badge.svg)](https://github.com/2scraper/tiktok-profile-scraper/actions/workflows/canary.yml)
+[![python](https://img.shields.io/badge/python-3.9%20%7C%203.12-blue)](pyproject.toml)
+[![licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
+[![engines](https://img.shields.io/badge/engines-Playwright%20%7C%20Selenium%20%7C%20pyppeteer%20%7C%20CDP-informational)](#engines-and-what-each-one-costs-you)
+[![runs without an account](https://img.shields.io/badge/runs%20without-an%20account-brightgreen)](#you-do-not-need-a-key-a-proxy-or-an-account)
+
 Extract public statistics from TikTok accounts — follower, following, like
 and video counts, the bio and its link, verification and TikTok Shop seller
 flags, account creation date, and the settings a creator publishes.
