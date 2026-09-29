@@ -712,7 +712,11 @@ def _fetch_with_policy(session_box: Dict[str, Any], pw, args,
     status = payload = None
     state = STATE_UNKNOWN
 
-    for attempt in range(1, attempts + 1):
+    # A while rather than a for: switching transport below grants
+    # one more attempt, and range() is fixed when the loop starts.
+    attempt = 0
+    while attempt < attempts:
+        attempt += 1
         session = session_box["session"]
         # First of the two solve call sites: clear a challenge BEFORE the
         # answer is judged, so a gated page is not classified on its
@@ -770,6 +774,11 @@ def _fetch_with_policy(session_box: Dict[str, Any], pw, args,
                 session_box["session"] = _open_session(pw, args, pool)
                 _prime_session(session_box["session"], args,
                                session_box["prime_url"])
+                # The switch is not a retry: it is the same page asked
+                # through the transport that can answer it. Without the
+                # extra attempt, `--retries 0` started a browser and
+                # never asked it for the page (audit 2026-09-29).
+                attempts += 1
                 continue
             # Second call site, same budget.
             if page_flow.should_solve(state):
@@ -797,7 +806,14 @@ def _fetch_with_policy(session_box: Dict[str, Any], pw, args,
                     label, state, attempt, attempts - 1, args.retry_delay)
         time.sleep(args.retry_delay)
 
-    return status, payload, state, blocked_seen
+    # `blocked` means the page ENDED refused, not that a refusal was met
+    # on the way: a retry that got the content is a recovered page.
+    # Reporting it as blocked turned a complete run into exit 6 /
+    # stop_reason blocked with pages_failed [] — measured live on
+    # 2026-09-29, pyppeteer, @nasa: one empty HTTP 200, then the
+    # profile, then "partial".
+    return (status, payload, state,
+            blocked_seen and not page_flow.should_parse(state))
 
 
 # ---------------------------------------------------------------------------
@@ -939,6 +955,43 @@ def _fetch_one_profile(session_box, pw, args, pool, handle: str,
     return outcome
 
 
+class _LazyDriver:
+    """A Playwright driver for ONE thread, started there on first use.
+
+    Playwright's sync API ties a driver to the thread that created it, and
+    CLAUDE.md §7 already says a worker owns its browser. The workers were
+    nevertheless handed the one `pw` the main thread created, so every
+    browser worker died with `greenlet.error: Cannot switch to a different
+    thread` — reproduced 2026-09-29 on profile and video, exit 4 with no
+    rows. Lazy, so an HTTP worker that never needs a browser starts no
+    driver, and one that switches to a browser mid-run (`--transport auto`)
+    starts it in its own thread.
+    """
+
+    def __init__(self):
+        self._cm = None
+        self._pw = None
+
+    def __getattr__(self, name):
+        if self._pw is None:
+            self._cm = sync_playwright()
+            self._pw = self._cm.__enter__()
+        return getattr(self._pw, name)
+
+    def stop(self):
+        if self._cm is not None:
+            self._cm.__exit__(None, None, None)
+            self._cm = self._pw = None
+
+
+def _worker_driver(pw):
+    return _LazyDriver()
+
+
+def _release_worker_driver(driver) -> None:
+    driver.stop()
+
+
 def _fetch_profiles_concurrently(pw, args, pool, handles, scraped_at, workers):
     """N workers, each owning its own browser and its own exit.
 
@@ -954,9 +1007,10 @@ def _fetch_profiles_concurrently(pw, args, pool, handles, scraped_at, workers):
 
     def worker(index: int):
         worker_pool = _worker_pool(pool, index)
+        own = _worker_driver(pw)
         box = {"session": None, "prime_url": profile_url(handles[0])}
         try:
-            box["session"] = _open_session(pw, args, worker_pool)
+            box["session"] = _open_session(own, args, worker_pool)
             _prime_session(box["session"], args, box["prime_url"])
             while True:
                 try:
@@ -964,7 +1018,7 @@ def _fetch_profiles_concurrently(pw, args, pool, handles, scraped_at, workers):
                 except queue.Empty:
                     return
                 try:
-                    outcome = _fetch_one_profile(box, pw, args, worker_pool,
+                    outcome = _fetch_one_profile(box, own, args, worker_pool,
                                                  handle, scraped_at)
                 except Exception as exc:                      # noqa: BLE001
                     # A worker that raises must neither hang the run nor
@@ -978,9 +1032,17 @@ def _fetch_profiles_concurrently(pw, args, pool, handles, scraped_at, workers):
                 with lock:
                     results[slot] = outcome
                 work.task_done()
+        except Exception as exc:                              # noqa: BLE001
+            # A worker that cannot START (no browser, a dead exit at
+            # launch) must not take its targets with it: they are left in
+            # the queue for its siblings and, if none can take them, given
+            # an outcome of their own below.
+            logger.error("worker %d could not start: %s", index,
+                         _mask_credentials(exc))
         finally:
             if box["session"] is not None:
                 box["session"].close()
+            _release_worker_driver(own)
 
     threads = [threading.Thread(target=worker, args=(i,), daemon=True)
                for i in range(workers)]
@@ -988,6 +1050,15 @@ def _fetch_profiles_concurrently(pw, args, pool, handles, scraped_at, workers):
         t.start()
     for t in threads:
         t.join()
+    # Every target asked for ends with an outcome. Before this, a target no
+    # worker reached simply vanished, and a run whose workers all failed
+    # reported "0 products" (exit 4) — a crash read as an empty answer.
+    for slot in range(len(handles)):
+        if slot not in results:
+            results[slot] = PageOutcome(
+                number=slot + 1, url=profile_url(handles[slot]),
+                state=STATE_UNKNOWN,
+                error="no worker could fetch it (see the log)")
     # Restored to the order --url named them, never arrival order
     # (CLAUDE.md §8).
     return [results[i] for i in sorted(results)]
