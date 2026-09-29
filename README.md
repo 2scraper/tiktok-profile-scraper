@@ -94,6 +94,12 @@ python3 -m venv venv
 ./venv/bin/python playwright_scraper.py --url nasa
 ```
 
+**One clone, one virtualenv.** The four tiktok-* repos share top-level
+module names (`product_parser`, `output_writer`, `playwright_scraper`, …),
+so `pip install .` of two of them into one environment makes the second
+silently replace the first. The commands above never do that — keep it
+that way, and give each repo its own venv.
+
 That is the whole setup. No key, no `.env`, no browser download — the
 default transport needs none of them. Install a browser only if you want
 `--transport browser`:
@@ -279,9 +285,12 @@ Two engine limits worth knowing before you hit them:
 **A run that finds nothing writes nothing.** Last night's good output is
 never replaced with `[]`. `--allow-empty` is the opt-out.
 
-Every run writes `<out>.meta.json` beside its output, recording the status,
+Every run that writes output writes `<out>.meta.json` beside it, recording
+the status,
 the stop reason, **which** accounts failed by number, and
-`handles_unavailable` and `stats_sources`.
+`handles_unavailable` and `stats_sources`. A run that FAILED writes neither
+file, so the last good output and its own sidecar stay together; the
+terminal output and exit code say what happened.
 
 ---
 
