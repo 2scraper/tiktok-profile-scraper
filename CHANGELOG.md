@@ -8,10 +8,30 @@ closely as a CLI toolkit can. A patch release means **fixes** — it does not
 promise that every flag's default is frozen, and where a default does change
 in one, the note leads with it.
 
-## [Unreleased]
+## [0.1.2] — 2026-09-29
+
+> **Behaviour changes.** A page that was refused once and then served is
+> no longer reported as blocked — such runs were exit 6 / `partial`, now 0.
+> Browser `--concurrency` works (it crashed every worker), and a run whose
+> workers all fail is exit 5, not exit 4.
 
 ### Fixed
 
+- **A recovered page is not a blocked one.** `_fetch_with_policy` kept a
+  "refusal seen" flag that a later successful attempt never cleared, so a
+  retry that got the page still reported it blocked. Measured live on
+  2026-09-29 (pyppeteer, @nasa): one empty HTTP 200, then the profile,
+  then `partial` / `stop_reason: blocked` with `pages_failed: []`. And the
+  HTTP -> browser switch spent a `--retries` attempt, so with `--retries 0`
+  a browser started and was never asked for the page. Both fixed in all
+  three engines, with a check that drives the real function.
+- **Browser `--concurrency` crashed every worker.** The workers were handed
+  the Playwright driver the main thread created, and Playwright's sync
+  driver belongs to its thread: `greenlet.error: Cannot switch to a
+  different thread`, then exit 4 with no rows. Each worker now starts its
+  own driver, on first use, in its own thread. And a target no worker
+  could fetch now ends as a counted failure (exit 5 when nothing was
+  gathered) instead of vanishing into "0 results". Live: 3 of 3, exit 0.
 > **`source_changed` never fired.** `diff_runs.py`'s source-split tuple was
 > empty, so a count read from the rounded `stats` fallback diffed against
 > an exact `statsV2` count was reported as the account having changed —
