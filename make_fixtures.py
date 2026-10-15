@@ -13,7 +13,7 @@ fetched with. Counted on the captures this repo was built from:
     ttwid (embed pages)   1
 
 None of it is a credential and all of it was anonymous and is expired. It
-still does not belong in a public repo, and CLAUDE.md §10 is explicit that
+still does not belong in a public repo, and
 the checks need the STRUCTURE of a thing, not the session that fetched it.
 
 Every one of those lives OUTSIDE `__DEFAULT_SCOPE__["webapp.user-detail"]`,
@@ -32,13 +32,13 @@ The signature is left intact because a redacted one would not exercise the
 
 That 32-hex hash is the one exemption this repo's credential scan carries,
 and it is scoped to a tiktokcdn URL rather than granted to the file
-(CLAUDE.md §24: before adding an exemption, check whether the value is
+(before adding an exemption, check whether the value is
 needed at all — here it is, because a column reads it).
 
 Verify a trimmed fixture parses identically to its untrimmed original
 =====================================================================
-`--verify` re-parses both and compares the rows field by field. CLAUDE.md
-§15 asks for this before committing any trimmed fixture, and it is one
+`--verify` re-parses both and compares the rows field by field. Do
+this before committing any trimmed fixture, and it is one
 command rather than a promise.
 """
 
@@ -62,7 +62,7 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                    "fixtures_generated.json")
 
 # The captures these fixtures are cut from. Each one is here for a reason
-# no other capture covers — CLAUDE.md §15's "one dump teaches you one
+# no other capture covers — "one dump teaches you one
 # locale", applied to account SHAPES as well as languages.
 WANTED = {
     # A mid-sized verified organisation. The baseline.

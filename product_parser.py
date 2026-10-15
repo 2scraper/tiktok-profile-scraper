@@ -1,7 +1,7 @@
 """product_parser.py — this IS the site.
 
 Everything TikTok-shaped that is not one of the handful of named
-constants in the engines lives here (CLAUDE.md §1). The generic reading of
+constants in the engines lives here. The generic reading of
 TikTok's two structured payloads lives one file over, in
 `tiktok_payload.py`, which is byte-identical across the tiktok-* repos and
 SHA-pinned by each one's suite.
@@ -20,7 +20,7 @@ Both carry the complete account object. That is the opposite of the
 neighbouring route: the video feed the same page loads by XHR
 (`/api/post/item_list/`) answers HTTP 200 with a zero-length body to every
 client tried, which is why THIS repo stops at the profile and
-tiktok-video-scraper exists separately. CLAUDE.md §21: gating is per-ROUTE,
+tiktok-video-scraper exists separately. Gating is per-ROUTE,
 not per-site, and two routes that differ want different docs and different
 canaries.
 
@@ -74,8 +74,8 @@ CANONICAL_HOST = "www.tiktok.com"
 ACCEPTED_HOSTS = ("www.tiktok.com", "tiktok.com", "m.tiktok.com", "vm.tiktok.com")
 
 # Hosts that ARE TikTok and are not this repo's job. Refusing them with
-# "is not on a TikTok host" would be false, and CLAUDE.md §5 is explicit
-# that a false refusal sends the reader looking for a typo that is not
+# "is not on a TikTok host" would be false, and
+# a false refusal sends the reader looking for a typo that is not
 # there. Named separately because the host check runs before the path
 # check, so putting the explanation only in the path branch left it
 # unreachable — a dead branch that reads like a feature.
@@ -88,7 +88,7 @@ SIBLING_HOSTS = {
 
 # A handle as TikTok itself allows it: letters, digits, underscore and dot,
 # 1-24 characters. Anchored on the URL, which is a contract with search
-# engines, rather than on any class in the rendered page (CLAUDE.md §4).
+# engines, rather than on any class in the rendered page.
 _HANDLE_RE = re.compile(r"^[A-Za-z0-9._]{1,24}$")
 _PROFILE_PATH_RE = re.compile(r"^/@([A-Za-z0-9._]{1,24})/?$")
 
@@ -99,7 +99,7 @@ USER_DETAIL_SCOPE = "webapp.user-detail"
 class NotAProfileUrl(ValueError):
     """The URL is a TikTok URL, but not a profile one.
 
-    Refused WITH THE REASON. CLAUDE.md §5: "is not a TikTok site" is false
+    Refused WITH THE REASON. "is not a TikTok site" is false
     for `https://www.tiktok.com/tag/nasa` and sends the reader looking for
     a typo that is not there.
     """
@@ -170,8 +170,8 @@ def profile_url(handle: str) -> str:
 def page_url(url: str, page: int) -> str:
     """There is no page 2 of a profile — and saying so is the point.
 
-    CLAUDE.md §7 wants pagination that never depends solely on selectors,
-    and §18 wants "is this listing addressable?" asked per URL before any
+    Pagination should never depend solely on selectors, and "is this
+    listing addressable?" should be asked per URL before any
     page URL is planned. On a TikTok profile the answer is no, twice over:
     the page states one account, and the video feed that WOULD paginate is
     the refused route this repo does not use. So `--pages` is rejected
@@ -208,7 +208,7 @@ def _ts_to_iso(value: Any) -> Optional[str]:
 
     Zero means "not set" on every one of these fields — an account whose
     nickname has never been changed carries `nickNameModifyTime: 0` — so
-    it must not become 1970-01-01. CLAUDE.md §21: a numeric field whose
+    it must not become 1970-01-01. A numeric field whose
     absent state is 0 rather than null needs the absence recovered.
     """
     if not isinstance(value, (int, float)) or isinstance(value, bool):
@@ -260,7 +260,7 @@ def _first_bio_link(user: Dict[str, Any]) -> Optional[str]:
 # `[0-9a-f]{16,64}` pattern looked correct and was measured correct. The
 # thirteenth — @zachking — carries `smgf5f369c884044a8df770614bbfd64717`,
 # with a three-letter prefix, and produced a null `avatar_id` while every
-# other column looked healthy. CLAUDE.md §4's rule again: anchor on the
+# other column looked healthy. The same rule again: anchor on the
 # site's own structural contract, never on the shape today's sample
 # happens to have.
 _AVATAR_ID_RE = re.compile(r"/([^/?#]+)~tplv")
@@ -290,7 +290,7 @@ def parse_profile(html: Any, url: str, scraped_at: str,
     Returns AT MOST one row, and zero rows when the site says the account
     is unavailable — with `status` in the diagnostics saying which, so an
     engine can tell "this handle has no account" from "this parser broke".
-    CLAUDE.md §20: a page that was served and parses to nothing is
+    A page that was served and parses to nothing is
     reported as its own thing, never as an empty result.
     """
     scope = rehydration_scope(html)
@@ -393,15 +393,15 @@ def parse_profile(html: Any, url: str, scraped_at: str,
 # Refusal detection
 # ---------------------------------------------------------------------------
 #
-# Positive-asset detection, the trick CLAUDE.md §8 records from another
-# site and §18 proves against a case it was not designed for (Chromium's
+# Positive-asset detection, a trick recorded on another
+# site and proven against a case it was not designed for (Chromium's
 # own network-error page, which carries the site's hostname in its title
 # and no vendor marker at all).
 #
 # Counted 2026-09-22 across every capture in this repo: a page TikTok
 # actually serves references its own static host at least twice; the shop
 # challenge page references it zero times. The threshold is 2 rather than
-# 1 because §17's classification-order trap is exactly this — a minimal
+# 1 because the classification-order trap is exactly this — a minimal
 # real page with one reference must not read as blocked.
 SITE_ASSET_MARKERS = ("ttwstatic.com", "tiktokcdn.com", "tiktokcdn-eu.com")
 MIN_ASSET_REFERENCES = 2
@@ -446,7 +446,7 @@ STATE_ERROR = "error"
 # A page the site plainly served, with the scope this repo reads on it,
 # that parsed to zero rows. OUR bug, and it gets its own name so it cannot
 # be reported as "no such account" — which would send the reader to check
-# the handle instead of the parser (CLAUDE.md §20).
+# the handle instead of the parser.
 STATE_PARSE_ERROR = "parse_error"
 STATE_UNKNOWN = "unknown"
 
@@ -468,13 +468,13 @@ def detect_page_state(html: Any, status: Optional[int] = None,
     """Name what TikTok answered with.
 
     The argument ORDER is the contract: every caller writes
-    `detect_page_state(html, status, url)`. CLAUDE.md §17 records a repo
-    whose engines called a classifier with `status` in the wrong place and
+    `detect_page_state(html, status, url)`. A sibling repo
+    had engines that called a classifier with `status` in the wrong place and
     crashed on their FIRST fetch, invisible to import, `--help` and four
     hundred green assertions. `smoke_test.py` binds every call site against
     this signature for exactly that reason.
 
-    The ORDER OF THE CHECKS is also deliberate, and CLAUDE.md §17's
+    The ORDER OF THE CHECKS is also deliberate, and the
     classification-order trap is the reason: signals are ordered by how
     much they PROVE, not by how cheap they are. An unambiguous positive —
     the site's own payload, saying in its own field what it did — outranks
@@ -485,7 +485,7 @@ def detect_page_state(html: Any, status: Optional[int] = None,
     # right here with `'>=' not supported between 'str' and 'int'` — exit 1
     # on the one engine that costs money, invisible to every offline check
     # because none of them feeds a status the way that service does.
-    # CLAUDE.md §16: run every path a credential gates.
+    # Run every path a credential gates.
     status = _coerce_status(status)
     # 1. The zero-byte 200. Nothing else can be concluded from a body that
     #    is not there, and it must be checked before anything that tries to

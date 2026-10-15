@@ -19,7 +19,7 @@ client buys is somebody else's infrastructure and a specific exit.
 
     # TWOCAPTCHA_KEY and TIKTOK_URL are read from .env, so neither needs
     # to be typed — a secret in argv is readable by anything that can run
-    # `ps` (CLAUDE.md §3).
+    # `ps`.
 """
 
 import argparse
@@ -40,6 +40,7 @@ from product_parser import (STATE_CHALLENGE, STATE_CONTENT,
 from tiktok_payload import PayloadError
 from output_writer import (EXIT_NO_PRODUCTS, Profile, finish_run, utc_now)
 import env_config
+import page_flow
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("scraper_api_client")
@@ -85,6 +86,11 @@ _KEY_IN_TEXT_RE = re.compile(
     r"((?:client)?key|token|api[_-]?key)=([^&\s'\"]{6,})", re.IGNORECASE)
 
 
+_KEY_IN_JSON_RE = re.compile(
+    r'("(?:client_?key|api_?key|apikey|key|token|password)"\s*:\s*)"[^"]*"',
+    re.IGNORECASE)
+
+
 def _redact_debug_header(value: str) -> str:
     """The x-debug header, safe to log.
 
@@ -99,8 +105,11 @@ def _redact_debug_header(value: str) -> str:
     would silently drop the cost and timing figures this is logged FOR the
     first time the API adds a field.
     """
-    return _KEY_IN_TEXT_RE.sub(r"\1=***",
-                               _CREDS_IN_TEXT_RE.sub(r"\1***:***@", value))
+    # The header is JSON, so a key can also arrive as `"apiKey": "..."`
+    # rather than as `key=...`; both shapes are masked.
+    out = _CREDS_IN_TEXT_RE.sub(r"\1***:***@", value)
+    out = _KEY_IN_TEXT_RE.sub(r"\1=***", out)
+    return _KEY_IN_JSON_RE.sub(r'\1"***"', out)
 
 
 def _build_wait_for(args) -> Optional[dict]:
@@ -182,7 +191,7 @@ def fetch_html(args) -> str:
     # the word "success" against 400 and crashed on its first live run
     # (`'>=' not supported between 'str' and 'int'`), while the comment
     # beneath this line claimed the status was being threaded through.
-    # CLAUDE.md §16: re-read what a remote API actually returns, rather
+    # Re-read what a remote API actually returns, rather
     # than what the client's field names imply it returns.
     raw_status = body.get("http_code")
     try:
@@ -289,7 +298,7 @@ def _run_once(args, attempt: int = 1, attempts: int = 1) -> int:
             "so this is either a page kind this client does not read or a "
             "change in the site. NOT reported as 'no account': a served "
             "page that parses to nothing is our bug, not an empty result "
-            "(CLAUDE.md §20).", len(html), exc, dump)
+            ".", len(html), exc, dump)
         return 1
 
     row = rows[0] if rows else None
@@ -425,10 +434,11 @@ def parse_args():
                       # measured 2026-09-23.
                       choices=("load", "domcontentloaded"),
                       help="Wait for a page lifecycle state.")
-    p.add_argument("--retries", type=int, default=1,
+    p.add_argument("--retries", type=page_flow.non_negative_int, default=1,
                    help="Retries when the response is a challenge page. Each "
                         "one is a fresh billable task.")
-    p.add_argument("--retry-delay", type=int, default=5)
+    p.add_argument("--retry-delay", type=page_flow.non_negative_float,
+                   default=5)
     p.add_argument("--dump-html", default=None,
                    help="Write the exact HTML the service returned.")
     p.add_argument("--allow-empty", action="store_true")

@@ -12,8 +12,8 @@ This repo reads one KIND of thing, so it carries one dataclass. Its
 siblings — tiktok-video-scraper, tiktok-shop-scraper and
 tiktok-ads-scraper — read different kinds and carry their own, and all of
 them keep the family prefix
-`source, scraped_at, url, sku, title` byte-identical and first
-(CLAUDE.md §9). `mode` is recorded in the run sidecar anyway, so a
+`source, scraped_at, url, sku, title` byte-identical and first.
+`mode` is recorded in the run sidecar anyway, so a
 consumer holding files from several repos can tell them apart without
 knowing which repo wrote which.
 
@@ -87,8 +87,8 @@ class Profile:
     """One TikTok account.
 
     The family prefix — `source`, `scraped_at`, `url`, `sku`, `title` — is
-    byte-identical and in this order across every repo in the family
-    (CLAUDE.md §9). `sku` is the account's NUMERIC id, not its handle:
+    byte-identical and in this order across every repo in the family.
+    `sku` is the account's NUMERIC id, not its handle:
     TikTok lets a user change the handle and publishes
     `uniqueIdModifyTime` to say when they last did, so a diff joined on the
     handle would report one renamed account as one deletion plus one
@@ -141,7 +141,7 @@ class Profile:
     # likes_count / video_count, computed from two numbers the site
     # published. Null rather than 0 when the account has no videos.
     likes_per_video: Optional[float] = None
-    # "statsV2" | "stats" | "absent" — provenance, per CLAUDE.md §8. A diff
+    # "statsV2" | "stats" | "absent" — provenance. A diff
     # whose count difference comes with a stats_source difference says
     # something about our two snapshots, not about the account.
     stats_source: Optional[str] = None
@@ -163,7 +163,7 @@ class Profile:
     # some account types only, and it was set on 2 of 14 profiles measured
     # on 2026-09-22 — but it is the highest-value field on the row for
     # anyone doing outreach, so a sparse column is the right call here
-    # rather than the §9 case for dropping one.
+    # rather than the always-null case for dropping one.
     bio_link: Optional[str] = None
     # The avatar is served from a SIGNED CDN URL that expires. Measured
     # 2026-09-22: the signed form answers HTTP 200 with a 77 KB JPEG and
@@ -176,7 +176,7 @@ class Profile:
     # picture. Without it, `avatar_url` differs on every single row of
     # every single run — the signature is re-minted per request — and
     # `diff_runs.py` would report every account as changed, every time.
-    # CLAUDE.md §24 records the same shape as a float32 round-trip making
+    # A sibling repo recorded the same shape as a float32 round-trip making
     # two modes disagree on every row; this is that, with a signature.
     avatar_id: Optional[str] = None
     # When `avatar_url` stops working, from the URL's own `x-expires`.
@@ -194,7 +194,7 @@ class Profile:
     # `uniqueIdModifyTime` on every account and reported 0 — "never" — on
     # ALL EIGHTEEN measured on 2026-09-22 (six fixtures plus twelve large
     # public accounts including several that have demonstrably renamed).
-    # CLAUDE.md §9: a column null on every row of every run should not
+    # A column null on every row of every run should not
     # exist, and removing it needs the measurement written down so somebody
     # can add it back with a better one. This is that measurement.
 
@@ -203,7 +203,7 @@ class Profile:
     # mapped to words this repo would have to invent. 0 is "everyone" on
     # every one of them in the values measured, but the mapping is not
     # documented by TikTok and guessing at it would be presenting a guess
-    # as a fact (CLAUDE.md §8).
+    # as a fact.
     comment_setting: Optional[int] = None
     duet_setting: Optional[int] = None
     stitch_setting: Optional[int] = None
@@ -232,7 +232,7 @@ class Profile:
     position: Optional[int] = None
 
 
-# The family name. CLAUDE.md §9 makes `Product` the schema every repo in
+# The family name. `Product` is the row schema every repo in
 # this family exports, and several shared checks import it by that name;
 # keeping the alias means the descriptive name can be used in this repo's
 # own code without reddening a check that was written against the family.
@@ -305,6 +305,32 @@ def _csv_value(v: Any) -> Any:
     return v
 
 
+# A spreadsheet treats a cell beginning with one of these as a FORMULA, not
+# as text, and a nickname, a bio or a linked URL is written by the account
+# owner rather than by this code. `=HYPERLINK(...)`, `+cmd|...` and
+# `@SUM(...)` are the classic shapes; a leading tab or newline is here
+# because some readers strip it and expose whatever follows.
+CSV_FORMULA_LEADS = ("=", "+", "-", "@", "\t", "\r", "\n")
+
+# Prefixed to a cell that would otherwise be read as a formula. Excel, Google
+# Sheets and LibreOffice treat the apostrophe as "the rest is text" and do not
+# show it; a consumer parsing the CSV with `csv` does see it, which is why
+# the count goes into the sidecar as `csv_cells_escaped`.
+CSV_FORMULA_ESCAPE = "'"
+
+
+def _csv_escape(v: Any):
+    """Neutralise a formula-shaped cell. Returns (value, was_escaped).
+
+    Only STRINGS are touched: escaping a number would turn `-5` into the
+    text `'-5` and break every sum over the column. CSV only — the JSON
+    output keeps the site's values exactly as served.
+    """
+    if isinstance(v, str) and v.startswith(CSV_FORMULA_LEADS):
+        return CSV_FORMULA_ESCAPE + v, True
+    return v, False
+
+
 @contextlib.contextmanager
 def _atomic(path: str, newline: Optional[str] = None):
     """Write to a temporary file beside `path`, then rename over it.
@@ -336,6 +362,18 @@ def _atomic(path: str, newline: Optional[str] = None):
             yield handle
             handle.flush()
             os.fsync(handle.fileno())
+        # `NamedTemporaryFile` creates the file 0600 and a rename keeps the
+        # temp file's mode, so without this every output would be readable
+        # by its owner alone, whatever the umask says. An existing target
+        # keeps its own mode (someone may have set it on purpose); a new one
+        # gets what `open(path, "w")` would have given it.
+        try:
+            mode = os.stat(path).st_mode & 0o777
+        except OSError:
+            umask = os.umask(0)
+            os.umask(umask)
+            mode = 0o666 & ~umask
+        os.chmod(handle.name, mode)
         os.replace(handle.name, path)
     except BaseException:
         # Leave the destination untouched. A failed write must not be
@@ -352,7 +390,7 @@ def write_json(rows: Sequence[Any], path: str) -> None:
         json.dump([asdict(r) for r in rows], f, ensure_ascii=False, indent=2)
 
 
-def write_csv(rows: Sequence[Any], path: str, row_cls: Type = Profile) -> None:
+def write_csv(rows: Sequence[Any], path: str, row_cls: Type = Profile) -> int:
     # An empty result still gets the header row. A zero-byte file makes a
     # consumer fail on read (no columns to parse) instead of reading a valid
     # table with zero rows — and "an empty result is still a well-formed
@@ -360,12 +398,23 @@ def write_csv(rows: Sequence[Any], path: str, row_cls: Type = Profile) -> None:
     #
     # The header comes from `row_cls`, not from the first row, so an empty
     # run still writes the columns of the mode that produced it.
+    #
+    # Returns how many cells were formula-escaped.
     fieldnames = [f.name for f in fields(row_cls)]
+    escaped = 0
     with _atomic(path, newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for r in rows:
-            writer.writerow({k: _csv_value(v) for k, v in asdict(r).items()})
+            row = {}
+            for k, v in asdict(r).items():
+                # Escape AFTER `_csv_value`: a list joined into one cell is
+                # text too, and its first element can be formula-shaped.
+                value, was_escaped = _csv_escape(_csv_value(v))
+                row[k] = value
+                escaped += was_escaped
+            writer.writerow(row)
+    return escaped
 
 
 # Exit code used when a run completes but produced nothing. Distinct from 1
@@ -505,7 +554,8 @@ def run_meta(status: str, stop_reason: str, pages_requested: int,
 
 
 def save(rows: Sequence[Any], out_prefix: str, fmt: str,
-         allow_empty: bool = False, row_cls: Type = Profile) -> int:
+         allow_empty: bool = False, row_cls: Type = Profile,
+         stats: Optional[dict] = None) -> int:
     """Write JSON/CSV and return a process exit code.
 
     Returns 0 when rows were written, EXIT_NO_PRODUCTS when there were none.
@@ -532,8 +582,17 @@ def save(rows: Sequence[Any], out_prefix: str, fmt: str,
         write_json(rows, f"{out_prefix}.json")
         print(f"[+] Saved {len(rows)} rows -> {out_prefix}.json")
     if fmt in ("csv", "both"):
-        write_csv(rows, f"{out_prefix}.csv", row_cls=row_cls)
+        escaped = write_csv(rows, f"{out_prefix}.csv", row_cls=row_cls)
         print(f"[+] Saved {len(rows)} rows -> {out_prefix}.csv")
+        # Through `stats` rather than the return value, because this
+        # function's return IS the exit code.
+        if stats is not None:
+            stats["csv_cells_escaped"] = escaped
+        if escaped:
+            print(f"[!] {escaped} CSV cell(s) began with a formula character "
+                  f"and were prefixed with {CSV_FORMULA_ESCAPE!r} so a "
+                  f"spreadsheet reads them as text. The JSON output is "
+                  f"unchanged — see csv_cells_escaped in the sidecar.")
     return 0 if rows else EXIT_NO_PRODUCTS
 
 
@@ -595,12 +654,24 @@ def finish_run(rows: Sequence[Any], out_prefix: str, fmt: str,
     # failed, the run is not complete, whatever it stopped for.
     complete = stop_reason in COMPLETE_STOP_REASONS and not pages_failed
     row_cls = ROW_CLASS_BY_MODE.get(mode, Profile)
-    rc = save(rows, out_prefix, fmt, allow_empty=allow_empty, row_cls=row_cls)
+    write_stats: dict = {}
+    rc = save(rows, out_prefix, fmt, allow_empty=allow_empty, row_cls=row_cls,
+              stats=write_stats)
     wrote_output = bool(rows) or allow_empty
 
     if wrote_output:
-        status = "complete" if (rows and complete) else (
-            "partial" if rows else "failed")
+        if rows:
+            status = "complete" if complete else "partial"
+        else:
+            # Only reachable with --allow-empty. A run that finished and
+            # genuinely found nothing is COMPLETE — the sidecar describes the
+            # run, and that run did everything it set out to do. It used to
+            # say "failed" here, next to an exit 4 that said the opposite.
+            status = "complete" if (complete and not blocked) else "failed"
+        # Merged UNDER the caller's `extra`: an engine's own facts win a
+        # name collision.
+        if write_stats:
+            extra = {**write_stats, **(extra or {})}
         write_run_meta(out_prefix, run_meta(
             status=status, stop_reason=stop_reason,
             pages_requested=pages_requested, pages_completed=pages_completed,

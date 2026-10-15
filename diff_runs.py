@@ -81,7 +81,7 @@ from output_writer import UNIQUE_BY_SKU_MODES
 #     runs taken seconds apart, on every row, while the picture is
 #     identical. `avatar_id` — the stable content hash out of the same URL
 #     — is tracked instead, and it changes when the account actually
-#     changes its picture. CLAUDE.md §24 records a float32 round-trip
+#     changes its picture. A sibling repo recorded a float32 round-trip
 #     making two modes disagree on every row; this is the same defect
 #     wearing a signature.
 #
