@@ -326,6 +326,12 @@ sentence under test every morning. If TikTok ever puts the profile route
 behind a challenge, the badge goes red the next day and the claim is
 retested without anyone having to remember to.
 
+A second job, `scraper-api`, fetches one profile through the paid 2Captcha
+Scraper API and requires a real row. It needs the repository secret
+`TWOCAPTCHA_KEY`; without it the job fails with an error naming the secret
+instead of skipping green, because a job that never reached the site has
+tested nothing. The `profiles` job above needs no secret.
+
 ---
 
 ## Contributing, and what the checks are for
@@ -340,8 +346,7 @@ captures. It passes with no engine library installed at all, and CI fails
 if an engine group reports an *unexpected* skip — "skipped, engine absent"
 reads identically to a real import error.
 
-It also holds the fixture CLAUDE.md asks every repo in this family to
-hold: the material the 2Captcha Scraping Browser's auto-solve extension
+It also holds the fixture every repo in this family carries: the material the 2Captcha Scraping Browser's auto-solve extension
 injects into every page it loads. Measured 2026-09-22 on a real
 `--cdp-endpoint` fetch of a page TikTok served — 16 `chrome-extension://`
 tags, 4 `hunter.js`, and `cf-turnstile` once. That last one is the trap:

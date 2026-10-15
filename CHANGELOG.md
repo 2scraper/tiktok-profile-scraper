@@ -8,6 +8,41 @@ closely as a CLI toolkit can. A patch release means **fixes** — it does not
 promise that every flag's default is frozen, and where a default does change
 in one, the note leads with it.
 
+## [Unreleased]
+
+> **Behaviour changes.** Output files (JSON, CSV and the `.meta.json`
+> sidecar) are now created with the mode your umask gives (`0644` under
+> the usual `022`) instead of always `0600`, and an existing file keeps its
+> mode. CSV cells that begin with `=`, `+`, `-`, `@`, tab, CR or LF get a
+> leading `'` (JSON is unchanged; the count is `csv_cells_escaped` in the
+> sidecar). Negative `--retries`, `--retry-delay`, `--delay` and
+> `--proxy-block-retries`, and `--pages`/`--concurrency` below 1, are now
+> refused with exit 2 naming the flag (`--retries 0` is still one attempt).
+> An `--allow-empty` run that finished and found nothing is recorded
+> `status: complete` instead of `failed`.
+
+### Fixed
+
+- Every output was readable by its owner only: the atomic writer's
+  temporary file is created `0600` and the rename kept that mode.
+- Creator-written text (bio, display name, link) could be read as a
+  spreadsheet formula when the CSV was opened.
+- `--retries -1` was accepted and silently behaved as 0; a negative delay
+  reached `time.sleep` mid-run. Now usage errors in all three engines and
+  in `scraper_api_client.py`.
+- The Selenium browser path handed the classifier no HTTP status at all;
+  it now reads the navigation's status from Navigation Timing where the
+  browser provides it.
+- Log masking now covers `http(s)://user:pass@` in engine errors and a
+  JSON-quoted `"apiKey": "..."` in the Scraper API's `x-debug` header.
+- The paid `scraper-api` canary job could never fail: its exit code was
+  written to a step output nothing read. It now asserts the exit code and a
+  real row, and fails with an error naming `TWOCAPTCHA_KEY` when that secret
+  is absent instead of skipping green.
+- Comments, help text and workflows referred to private notes by section
+  number; the rules are now stated in this repository's own words, and the
+  offline suite fails if such a reference reappears.
+
 ## [0.1.2] — 2026-09-29
 
 > **Behaviour changes.** A page that was refused once and then served is
