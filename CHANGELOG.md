@@ -10,6 +10,8 @@ in one, the note leads with it.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-15
+
 > **Behaviour changes.** Output files (JSON, CSV and the `.meta.json`
 > sidecar) are now created with the mode your umask gives (`0644` under
 > the usual `022`) instead of always `0600`, and an existing file keeps its
