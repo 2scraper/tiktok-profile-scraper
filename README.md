@@ -327,7 +327,8 @@ behind a challenge, the badge goes red the next day and the claim is
 retested without anyone having to remember to.
 
 A second job, `scraper-api`, fetches one profile through the paid 2Captcha
-Scraper API and requires a real row. It needs the repository secret
+Scraper API and requires a real row. Because each run bills, it runs weekly
+(Mondays) and on a manual dispatch, not daily. It needs the repository secret
 `TWOCAPTCHA_KEY`; without it the job fails with an error naming the secret
 instead of skipping green, because a job that never reached the site has
 tested nothing. The `profiles` job above needs no secret.
