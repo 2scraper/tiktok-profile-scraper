@@ -76,7 +76,7 @@ The second applies the credential rules CI enforces to **every blob that has
 ever existed**, not just the working tree. A commit on top cannot reach what a
 published tag already holds.
 
-The canary is **not** gated on a secret: the profile route is served to a bare GitHub runner, so it runs a real scrape daily and is expected GREEN. If TikTok ever puts this route behind a challenge, the badge goes red the next morning. The separate `scraper-api` job needs the `TWOCAPTCHA_KEY` secret and fails, naming it, when the secret is absent.
+The canary is **not** gated on a secret: the profile route is served to a bare GitHub runner, so it runs a real scrape weekly (Mondays) and is expected GREEN. If TikTok ever puts this route behind a challenge, the badge goes red on the next weekly run. The separate `scraper-api` job needs the `TWOCAPTCHA_KEY` secret and fails, naming it, when the secret is absent.
 
 ## Pull requests
 

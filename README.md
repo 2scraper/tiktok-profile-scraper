@@ -314,21 +314,21 @@ Variables: `TWOCAPTCHA_KEY`, `TIKTOK_CDP_ENDPOINT`, `TIKTOK_PROXY`,
 
 ---
 
-## The daily canary
+## The weekly canary
 
 `.github/workflows/canary.yml` runs a real scrape against live TikTok every
-morning **from a bare GitHub runner with no secrets**, and is expected to be
+Monday **from a bare GitHub runner with no secrets**, and is expected to be
 green.
 
 That is not a convenience. The central claim of this README is "you need no
 key, no proxy and no account", and an ungated scheduled canary is that
-sentence under test every morning. If TikTok ever puts the profile route
-behind a challenge, the badge goes red the next day and the claim is
+sentence under test every Monday. If TikTok ever puts the profile route
+behind a challenge, the badge goes red on the next weekly run and the claim is
 retested without anyone having to remember to.
 
 A second job, `scraper-api`, fetches one profile through the paid 2Captcha
-Scraper API and requires a real row. Because each run bills, it runs weekly
-(Mondays) and on a manual dispatch, not daily. It needs the repository secret
+Scraper API and requires a real row. It runs on the same weekly (Monday)
+schedule and on a manual dispatch. It needs the repository secret
 `TWOCAPTCHA_KEY`; without it the job fails with an error naming the secret
 instead of skipping green, because a job that never reached the site has
 tested nothing. The `profiles` job above needs no secret.
