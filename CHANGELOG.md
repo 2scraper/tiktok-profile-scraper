@@ -12,8 +12,7 @@ in one, the note leads with it.
 
 ### Changed
 
-- CI only: the canary's paid `scraper-api` job now runs weekly (Mondays 06:23
-  UTC) and on a manual dispatch; the free `profiles` job still runs daily.
+- CI only: the whole canary, free and paid jobs alike, now runs weekly (Mondays 06:23 UTC) and on a manual dispatch; the daily schedule is removed.
 
 ## [0.2.0] — 2026-10-15
 
