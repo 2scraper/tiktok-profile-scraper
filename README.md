@@ -1,4 +1,4 @@
-# tiktok-profile-scraper
+# TikTok Profile Scraper — Followers, Likes and Account Stats in Python
 
 [![release](https://img.shields.io/github/v/release/2scraper/tiktok-profile-scraper?sort=semver)](https://github.com/2scraper/tiktok-profile-scraper/releases)
 [![tests](https://github.com/2scraper/tiktok-profile-scraper/actions/workflows/tests.yml/badge.svg)](https://github.com/2scraper/tiktok-profile-scraper/actions/workflows/tests.yml)
@@ -7,6 +7,8 @@
 [![licence](https://img.shields.io/badge/licence-MIT-green)](LICENSE)
 [![engines](https://img.shields.io/badge/engines-Playwright%20%7C%20Selenium%20%7C%20pyppeteer%20%7C%20CDP-informational)](#engines-and-what-each-one-costs-you)
 [![runs without an account](https://img.shields.io/badge/runs%20without-an%20account-brightgreen)](#you-do-not-need-a-key-a-proxy-or-an-account)
+
+**TikTok Profile scraper** — an open-source (MIT) Python tool that reads public tiktok.com profile pages and writes exact follower, following, like and video counts, the bio and its link, verification and TikTok Shop seller flags and the account creation date to JSON or CSV. Measured 2026-09-22 from a bare datacentre address with no credentials of any kind, profile pages answered HTTP 200 to plain curl and to headless and headful Chromium, so it needs no key, proxy or account. Use it to build a dataset of public accounts, or compare two runs with `diff_runs.py` to track follower changes.
 
 Extract public statistics from TikTok accounts — follower, following, like
 and video counts, the bio and its link, verification and TikTok Shop seller
@@ -334,6 +336,23 @@ instead of skipping green, because a job that never reached the site has
 tested nothing. The `profiles` job above needs no secret.
 
 ---
+
+## Guides
+
+- [How to run the 2scraper scrapers: setup, proxies, exit codes and access modes](https://2captcha.com/h/how-to-run-2scraper-open-source-scrapers) — installation, `.env`, `.meta.json` for the whole family.
+
+## Related scrapers
+
+Same CLI conventions, same output contract (one row per item, JSON or CSV, a `.meta.json` sidecar and shared exit codes):
+
+- [TikTok Video scraper](https://github.com/2scraper/tiktok-video-scraper) — TikTok videos with exact engagement, sound, hashtags…
+- [Weibo scraper](https://github.com/2scraper/weibo-scraper) — Hot feed, account timelines and post comments…
+- [YouTube scraper](https://github.com/2scraper/youtube-scraper) — Comment threads, replies, video metadata and search
+- [Meta Ad Library scraper](https://github.com/2scraper/facebook-ads-scraper) — Every ad of a keyword or advertiser search in Meta's Ad…
+- [Facebook scraper](https://github.com/2scraper/facebook-pages-scraper) — Public Facebook Pages — contacts, followers, owner…
+- [Instagram scraper](https://github.com/2scraper/instagram-scraper) — Public profiles, posts and Reels, read logged out
+
+All scrapers: [github.com/2scraper](https://github.com/2scraper) · Need another site? [Open a request](https://github.com/2scraper/.github/issues/new?title=%5BScraper%20request%5D%20)
 
 ## Contributing, and what the checks are for
 
